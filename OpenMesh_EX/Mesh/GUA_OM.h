@@ -11,6 +11,8 @@
 #include <gl/gl.h>
 #include <gl/glu.h>
 #include"Eigen/Eigen"
+#include"Eigen/Dense"
+#include"Eigen/SparseCholesky"
 struct Face_InnerAngle
 {
 	double Vertex_Angle[3];
@@ -72,6 +74,7 @@ namespace OMT//OpenMesh Triangle mesh
 	typedef MyMesh::FaceFaceIter							FFIter	;	//FaceFaceIter type
 	typedef MyMesh::VertexOHalfedgeIter						VOHEIter;	//VertexOutHalfEdge type
 	typedef MyMesh::ConstVertexVertexIter					CVVIter	;	//ConstVertexVertexIter type
+	typedef MyMesh::HalfedgeIter							HIter;
 	/*----------------------------------------------------------------------*/
 
 	/*定義額外資料結構*/
@@ -138,6 +141,7 @@ namespace OMP//OpenMesh Polygonal mesh
 	typedef MyMesh::FaceFaceIter							FFIter	;	//FaceFaceIter type
 	typedef MyMesh::VertexOHalfedgeIter						VOHEIter;	//VertexOutHalfEdge type
 	typedef MyMesh::ConstVertexVertexIter					CVVIter	;	//ConstVertexVertexIter type
+	typedef MyMesh::HalfedgeIter							HIter;
 	/*----------------------------------------------------------------------*/
 
 	/*定義額外資料結構*/
@@ -223,23 +227,28 @@ public:
 	}
 	//-------Edit Flag-------//
     bool                                       Delete_Flag;
-	
 	int                                        Constrain_num;
 	int                                        Boundary_num ;
 	OMT::VHandle                               start_vh,end_vh;
 	OMT::VHandle                               ExtremeVh[2];
 	int                                        PatchType;
-
+	OMT::MyMesh								   originalMesh;
+	double									   WL;
+	double									   WH=1;
+	std::vector<double>						   WHt1;
+	double									   A;
+	double									   SL=9;
 	std::vector<OMT::VHandle>                  Pluspt      ;
 	std::vector<OMT::VHandle>                  Minuspt     ;
 	std::vector<OMT::VHandle>                  Extrme_Pt   ;
-
+	std::vector<double>						   A0area;
 
 	void Render_Solid();
 	void Render_SolidWireframe();
 	void Render_Wireframe();
 	void Render_Point();
-	void Geometry_Contraction();
+	void Geometry_Contraction(int);
+	void calculateInitialValue();
 private:
 };
 

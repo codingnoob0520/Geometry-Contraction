@@ -1,5 +1,5 @@
 #include "GUA_OM.h"
-
+#include<cmath>
 namespace OMT
 {
 	/*======================================================================*/
@@ -576,42 +576,127 @@ void Tri_Mesh::Render_Point()
 	glEnd();
 }
 
-void Tri_Mesh::Geometry_Contraction()
+void Tri_Mesh::Geometry_Contraction(int iters)
 {
-	
-	Eigen::SparseMatrix < double > L(n_vertices(),n_vertices());
+	std::cout << "第 " << iters << " 次" << std::endl;
+
+	Eigen::SparseMatrix < double > L(n_vertices()*2 ,n_vertices());
 	std::vector<Eigen::Triplet<double>> Lw;
-	//原想法 使用vertex找
-	for (EdgeIter e_it = edges_begin(); e_it != edges_end(); ++e_it) {
-		OpenMesh::Vec3d v1, v2;
-		double cosValue, sinValue;
-		double cotalpha, cotbeta;
-		//取得當前edge的 順向(0) ,逆向(1)
-		HalfedgeHandle heh = halfedge_handle(*e_it, 0);
-		Point pFrom = point(from_vertex_handle(heh));
-		Point pTo = point(to_vertex_handle(heh));
-		HalfedgeHandle _heh = halfedge_handle(*e_it, 1);
-		Point p1 = point(to_vertex_handle(next_halfedge_handle(heh)));
-		Point p2 = point(to_vertex_handle(next_halfedge_handle(_heh)));
+	double max = 0;
+	
+	for (VIter v_it = vertices_begin(); v_it != vertices_end(); v_it++) {
+		double wik = 0;
+		for (OMT::VOHEIter vohe_it = voh_begin(v_it); vohe_it != voh_end(v_it); ++vohe_it) {
+			double w;
+			OpenMesh::Vec3d v1, v2;
+			double cosValue, sinValue;
+			double cotalpha, cotbeta;
+			HalfedgeHandle heh = vohe_it;
+			Point pFrom = point(from_vertex_handle(heh));
+			Point pTo = point(to_vertex_handle(heh));
+			HalfedgeHandle _heh = opposite_halfedge_handle(heh);
+			Point p1 = point(to_vertex_handle(next_halfedge_handle(heh)));
+			Point p2 = point(to_vertex_handle(next_halfedge_handle(_heh)));
+			v1 = pTo - p1;
+			v2 = pFrom - p1;
 
-		v1 = pTo - p1;
-		v2 = pFrom - p1;
-		
-		cosValue = dot(v1, v2) / (v1.length() * v2.length());
-		sinValue = std::sqrt(1.0 - cosValue * cosValue);
-		cotalpha = cosValue / sinValue;
+			cosValue = dot(v1, v2) / (v1.length() * v2.length());
+			double alpha = std::acos(cosValue);
+			cotalpha = 1 / std::tan(alpha);
 
-		v1 = pTo - p2;
-		v2 = pFrom - p2;
-		cosValue = dot(v1, v2) / (v1.length() * v2.length());
-		sinValue = std::sqrt(1.0 - cosValue * cosValue);
-		cotbeta = cosValue / sinValue;
+			v1 = pTo - p2;
+			v2 = pFrom - p2;
+			cosValue = dot(v1, v2) / (v1.length() * v2.length());
+			double beta = std::acos(cosValue);
 
-		double w = cotalpha + cotbeta;
-		Lw.emplace_back(from_vertex_handle(heh).idx(), to_vertex_handle(heh).idx(), w);
-		Lw.emplace_back(to_vertex_handle(heh).idx(), from_vertex_handle(heh).idx(), w);
+			cotbeta = 1 / std::tan(beta);
+
+			w = cotalpha + cotbeta;
+			if (w > max) {
+				max = w;
+			}
+			wik -= w;
+			if (isnan(w)) {
+				system("pause");
+			}
+			Lw.push_back(Eigen::Triplet<double>(from_vertex_handle(heh).idx(), to_vertex_handle(heh).idx(), WL * w));
+			//Lw.push_back(Eigen::Triplet<double>(to_vertex_handle(heh).idx(), from_vertex_handle(heh).idx(), WL * w));
+		}
+		Lw.push_back(Eigen::Triplet<double>(v_it.handle().idx(), v_it.handle().idx(), WL* wik));
+		Lw.push_back(Eigen::Triplet<double>(n_vertices() + v_it.handle().idx(), v_it.handle().idx(), WHt1[v_it.handle().idx()]));
 	}
+	std::cout << "Max w :" << max << " | WL :" << WL << " | WH : " << WHt1[0] << " " << WHt1[1] << " " << WHt1[2] << std::endl;
 
+	L.setFromTriplets(Lw.begin(),Lw.end());
+	/////RIGHT MATRIX
+	Eigen::SparseMatrix < double > Rmatrix(n_vertices() * 2, 3);
+	std::vector<Eigen::Triplet<double>> Rtriplet;
+	for (VIter v_it = vertices_begin(); v_it != vertices_end(); ++v_it) {
+		Rtriplet.emplace_back(n_vertices() + v_it.handle().idx(), 0, WHt1[v_it.handle().idx()] * point(v_it).data()[0]);
+		Rtriplet.emplace_back(n_vertices() + v_it.handle().idx(), 1, WHt1[v_it.handle().idx()] * point(v_it).data()[1]);
+		Rtriplet.emplace_back(n_vertices() + v_it.handle().idx(), 2, WHt1[v_it.handle().idx()] * point(v_it).data()[2]);
+	}
+	Rmatrix.setFromTriplets(Rtriplet.begin(), Rtriplet.end());
+
+	//solve
+	Eigen::SparseMatrix < double > newL(L.transpose() * L);
+	Eigen::SparseMatrix < double > newRmatrix(L.transpose() * Rmatrix);
+
+	Eigen::SimplicialCholesky<Eigen::SparseMatrix < double >> solver(newL);
+	Eigen::MatrixXd x = solver.solve(newRmatrix);
+
+
+
+
+	for (VIter v_iter = vertices_begin(); v_iter != vertices_end(); ++v_iter) {
+
+		point(v_iter).data()[0] = x(v_iter.handle().idx(), 0);
+		point(v_iter).data()[1] = x(v_iter.handle().idx(), 1);
+		point(v_iter).data()[2] = x(v_iter.handle().idx(), 2);
+	}
+	
+	///
+	
+	
+	//Update WL WH
+
+	WL = SL * WL;
+	for (VIter v_it = vertices_begin(); v_it != vertices_end(); ++v_it) {
+		double oneringarea=0;
+		for (OMT::VOHEIter voh_it = voh_iter(v_it); voh_it.is_valid(); ++voh_it) {
+			oneringarea += calc_sector_area(voh_it);
+		}
+		WHt1[v_it.handle().idx()] = (sqrt(A0area[v_it.handle().idx()] / oneringarea));
+	}
+	
+	
+	
+	
+
+
+	
+}
+
+void Tri_Mesh::calculateInitialValue() {
+	double area = 0;
+	for (HIter h_it = halfedges_begin(); h_it != halfedges_end();++h_it) {
+		area += calc_sector_area(h_it.handle());
+	}
+	A = area / n_halfedges();
+	WL = 0.001 * sqrt(A);
+	for (int i = 0; i < n_vertices(); i++) {
+		WHt1.push_back(WH);
+	}
+	
+	for (VIter v_it = vertices_begin(); v_it != vertices_end(); ++v_it) {
+		double oneringarea = 0;
+		for (OMT::VOHEIter	 voh_it = voh_iter(v_it); voh_it.is_valid(); ++voh_it) {
+			oneringarea+= calc_sector_area(voh_it.handle());
+		}
+		A0area.push_back(oneringarea);
+	}
+	
+	
 }
 bool ReadFile(std::string _fileName,Tri_Mesh *_mesh)
 {
@@ -621,6 +706,7 @@ bool ReadFile(std::string _fileName,Tri_Mesh *_mesh)
 	{
 		//read mesh from filename OK!
 		isRead = true;
+		OpenMesh::IO::read_mesh(_mesh->originalMesh, _fileName, opt);
 	}
 	if(isRead)
 	{

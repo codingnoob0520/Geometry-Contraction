@@ -9,7 +9,7 @@ Tri_Mesh *mesh;
 xform xf;
 GLCamera camera;
 float fov = 0.7f;
-
+int it = 1;
 static const Mouse::button physical_to_logical_map[] = {
 	Mouse::NONE, Mouse::ROTATE, Mouse::MOVEXY, Mouse::MOVEZ,
 	Mouse::MOVEZ, Mouse::MOVEXY, Mouse::MOVEXY, Mouse::MOVEXY,
@@ -292,8 +292,11 @@ private: System::Void openModelDialog_FileOk(System::Object^  sender, System::Co
 
 	mesh = new Tri_Mesh;
 
-	if (ReadFile(filename, mesh))
+	if (ReadFile(filename, mesh)) {
 		std::cout << filename << std::endl;
+		mesh->calculateInitialValue();
+	}
+		
 
 	hkoglPanelControl1->Invalidate();
 }
@@ -312,8 +315,13 @@ private: System::Void saveModelDialog_FileOk(System::Object^  sender, System::Co
 }
 private: System::Void button1_Click(System::Object^ sender, System::EventArgs^ e) {
 	
+	//for (int i = 0; i < 10; i++) {
+		//std::cout << i << std::endl;
+		mesh->Geometry_Contraction(it);
+		it++;
+		hkoglPanelControl1->Invalidate();
+	//}
 	
-	hkoglPanelControl1->Invalidate();
 }
 };
 }
